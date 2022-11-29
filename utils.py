@@ -42,11 +42,19 @@ def get_normalization_matrix(x):
     #centroid ???????????
     """ I want to compute the mean along the 1 axis, and I set keepdims=True so the axes which are reduced are left
         in the result as dimensions with size one --> so the result will broadcast correctly against the input array.
-    """    
-    centroid= np.mean(x_2D, axis= 1, keepdims=True) # µ = (µx, µy) has two dimensions--> mean over the columns (axis=1)
-    #mean standard deviation 
-    msd= np.mean (np.sqrt(np.sum((x_2D - centroid) ** 2, axis=0))) #I perform the mean along axis 0 --> rows
-    # perchè fa anche np.sqrt??????????
+    """
+    #mean --> µ = (µx, µy) has two dimensions--> mean over the columns (axis=1)
+    centroid= np.mean(x_2D, axis= 1, keepdims=True) 
+      
+    #mean standard deviation --> The standard deviation is the square root of the average of the squared deviations from the mean, i.e., std = sqrt(mean(x)), where x = abs(a - a.mean())**2.
+    # A) msd= np.mean (np.sum((x_2D - centroid) ** 2, axis=0)) 
+    # B) msd= np.mean(np.linalg.norm(x_2D - centroid, ord=2) ** 2)
+    # C) distances = np.sum((x_2D - centroid)**2, axis=1) --> 
+    # D) distance = x_2D - centroid --> msd =np.mean(np.std((x_2D - centroid), axis=1))
+    # E) msd= np.sqrt(np.mean(np.sum((distance) ** 2, axis=1)))
+    # F) msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))  !!!!!!!!!!!!
+    distance = x_2D - centroid
+    msd= np.mean(np.std((x_2D), axis=1)) #I perform the mean standard deviation along axis 0 --> rows
     centroid = centroid.flatten()
 
     #TRANSFORMATION MATRIX used to normalize the inputs x
@@ -116,51 +124,23 @@ def eight_points_algorithm(x1, x2, normalize=True):
     # I obtian a system of 9 equations as the 9 entries of F that can be summarized in matrix form as Af=0, where ||f||^2=1
     #I solve this lienar system by minimizing ||Af||^2 subject to ||f||^2=1
     #This equation can be represented in matrix notation as Af= 0, where A is the point correspondence matrix and vector f is the flattened fundamental matrix.
+
+    A = np.stack((x2[0, :] * x1[0, :],
+            x2[0, :] * x1[1, :],
+            x2[0, :],
+            x2[1, :] * x1[0, :],
+            x2[1, :] * x1[1, :],
+            x2[1, :],
+            x1[0, :],
+            x1[1, :],
+            np.ones((N,))), 1)
     
-    A=np.zeros((N,9))
-    a = x2_n[0, :] * x1_n[0, :]
-    b= x2_n[0, :] * x1_n[1, :]
-    c= x2_n[0, :]
-    d= x2_n[1, :] * x1_n[0, :]
-    e= x2_n[1, :] * x1_n[1, :]
-    f= x2_n[1, :]
-    g= x1_n[0, :]
-    h= x1_n[1, :]
-    i= np.ones((N,))
-    
-    # TODO check this and find a different solution
 
     #I need to put together a sequence of arrays along a new axis 
     # --> it returns a stacked array with one more dimension than the input arrays
-    A = np.stack((a, b, c, d, e, f, g, h, i), axis=1) #Join a sequence of arrays along a new axis 
+    #A = np.stack((a, b, c, d, e, f, g, h, i), axis=1) #Join a sequence of arrays along a new axis 
     #--> by using concatenate I can do it along an existing axis but it is slower : A = np.concatenate((a, b, c, d, e, f, g, h, i), axis=1)
     #print("A=", A)
-    """
-    Online ho trovato:
-      A = np.zeros((len(uvMat),9))
-    # img1 x' y' x y im2
-    for i in range(len(uvMat)):
-        A[i][0] = uvMat[i][0]*uvMat[i][2]
-        A[i][1] = uvMat[i][1]*uvMat[i][2]
-        A[i][2] = uvMat[i][2]
-        A[i][3] = uvMat[i][0]*uvMat[i][3]
-        A[i][4] = uvMat[i][1]*uvMat[i][3]
-        A[i][5] = uvMat[i][3] 
-        A[i][6] = uvMat[i][0]
-        A[i][7] = uvMat[i][1]
-        A[i][8] = 1.0  
-
-        A = np.stack((x2[0, :] * x1[0, :],
-                  x2[0, :] * x1[1, :],
-                  x2[0, :],
-                  x2[1, :] * x1[0, :],
-                  x2[1, :] * x1[1, :],
-                  x2[1, :],
-                  x1[0, :],
-                  x1[1, :],
-                  np.ones((N,))), 1)
-
-    """
 
 
     """
@@ -223,7 +203,7 @@ def eight_points_algorithm(x1, x2, normalize=True):
     return F
 
 
-def right_epipole(F):
+def right_epipole(F, type="right"):
     """
     Computes the (right) epipole from a fundamental matrix F
     To find the right epipole I consider the epipolar lines computed from the fundamental matrix F (remind that Fx is the epipolar line l'=Fx associated with x)
@@ -241,31 +221,31 @@ def right_epipole(F):
     The function compute_epipole is used to calculate the epipoles for a given fundamental matrix and corner point correspondences in the two images.
 
     """
+    if type == "right": #default value is used for the right epipole
+        # The epipole is the null space of F (F * e = 0) --> linear least square estimate of F
+        _, _, V = np.linalg.svd(F)
+    elif type== "left":#1 is used for the left epipole  
+        _, _, V = np.linalg.svd(F.T)   
 
-    # The epipole is the null space of F (F * e = 0) --> linear least square estimate of F
-    _, _, V = np.linalg.svd(F)
-    e = V[-1, :] # e = V[-1]
+    e = V[-1, :] # e = V[-1] -> addresses the last row of V all the columns
     # TODO check what it does 
     e = e / e[2]
-    print ("Right epipole =", e)
-    
     return e
 
-def left_epipole(F):
-    """
-    Computes the (right) epipole from a fundamental matrix F.
-    (Use with F.T for left epipole --> to compute the other epipole)
-    When the function is called, it's pass in F.T
-    """
-    # TODO check if necessary
+# def left_epipole(F):
+#     """
+#     Computes the (right) epipole from a fundamental matrix F.
+#     (Use with F.T for left epipole --> to compute the other epipole)
+#     When the function is called, it's pass in F.T
+#     """
 
-    # The epipole is the null space of F (F * e = 0)
-    _, _, V = np.linalg.svd(F)
-    e = V[-1, :] # e = V[-1] --> addresses the last row of V all the columns
-    e = e / e[2]
-    print ("Left epipole =", e)
+#     # The epipole is the null space of F (F * e = 0)
+#     _, _, V = np.linalg.svd(F)
+#     e = V[-1, :] # e = V[-1] --> addresses the last row of V all the columns
+#     e = e / e[2]
+#     print ("Left epipole =", e)
 
-    return e
+#     return e
 
 def plot_epipolar_line(im, F, x, e, ax=None, show_epipole=False):
     """
@@ -282,23 +262,22 @@ def plot_epipolar_line(im, F, x, e, ax=None, show_epipole=False):
     l1= F @ x
 
     # I need an evenly spaced number of samples over the interval defined by [0,n] image space -> or find max e min and use themas limit
-    samp= np.linspace(0,n, 50)
-    val = np.array([(l1[2] + l1[0] * s) / (-l1[1]) for s in samp])  
+    samp= np.linspace(0,n, 150)
+    val = np.array([(l1[2] + l1[0] * s) / (-l1[1]) for s in samp])   #values of the line to be plot
 
     # I need to limit the points I am taking by considering the image dimension m
     # --> i want only the points inside the image
     p_in = (val >= 0) & (val < m)
     if ax is None:
-        ax = plt.plot(samp[p_in], val[p_in], linewidth=1)
+        ax = plt.plot( val[p_in], linewidth=1) #samp[p_in],
         plt.plot(x[0], x[1], 'ro')
-
-    #oppure:
-    # if ax is None:
-    #    ax = plt
 
     if show_epipole is True:
         ax.plot(e[0] / e[2], e[1] / e[2], 'r*')
 
+    #oppure:
+    # if ax is None:
+    #    ax = plt
     #ax.plot(t[ndx], lt[ndx], linewidth=2)
     #ax.plot(e[0] / e[2], e[1] / e[2], 'r*')
 
