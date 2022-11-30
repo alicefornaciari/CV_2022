@@ -53,9 +53,14 @@ def get_normalization_matrix(x):
     # D) distance = x_2D - centroid --> msd =np.mean(np.std((x_2D - centroid), axis=1))
     # E) msd= np.sqrt(np.mean(np.sum((distance) ** 2, axis=1)))
     # F) msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))  !!!!!!!!!!!!
+    
     distance = x_2D - centroid
+    #A) --> msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))
+    #B) --> msd=np.mean (np.sum((distance) ** 2, axis=0)) 
+    # C)
     msd= np.mean(np.std((x_2D), axis=1)) #I perform the mean standard deviation along axis 0 --> rows
     centroid = centroid.flatten()
+    print("msd = ", msd)
 
     #TRANSFORMATION MATRIX used to normalize the inputs x
     T = np.array([[(np.sqrt(2) / msd), 0, (-centroid[0] * np.sqrt(2) / msd)], #µx
@@ -125,14 +130,14 @@ def eight_points_algorithm(x1, x2, normalize=True):
     #I solve this lienar system by minimizing ||Af||^2 subject to ||f||^2=1
     #This equation can be represented in matrix notation as Af= 0, where A is the point correspondence matrix and vector f is the flattened fundamental matrix.
 
-    A = np.stack((x2[0, :] * x1[0, :],
-            x2[0, :] * x1[1, :],
-            x2[0, :],
-            x2[1, :] * x1[0, :],
-            x2[1, :] * x1[1, :],
-            x2[1, :],
-            x1[0, :],
-            x1[1, :],
+    A = np.stack((x2_n[0, :] * x1_n[0, :],
+            x2_n[0, :] * x1_n[1, :],
+            x2_n[0, :],
+            x2_n[1, :] * x1_n[0, :],
+            x2_n[1, :] * x1_n[1, :],
+            x2_n[1, :],
+            x1_n[0, :],
+            x1_n[1, :],
             np.ones((N,))), 1)
     
 
@@ -247,7 +252,7 @@ def right_epipole(F, type="right"):
 
 #     return e
 
-def plot_epipolar_line(im, F, x, e, ax=None, show_epipole=False):
+def plot_epipolar_line(im, F, x, e, show_epipole=False): #ax=None,
     """
     Plot the epipole and epipolar line F*x=0 in an image. 
     F is the fundamental matrix, passed transpose
@@ -262,30 +267,20 @@ def plot_epipolar_line(im, F, x, e, ax=None, show_epipole=False):
     l1= F @ x
 
     # I need an evenly spaced number of samples over the interval defined by [0,n] image space -> or find max e min and use themas limit
-    samp= np.linspace(0,n, 150)
-    val = np.array([(l1[2] + l1[0] * s) / (-l1[1]) for s in samp])   #values of the line to be plot
+    samp= np.linspace(0, n, 150)
+    val = np.array([(l1[2] + l1[0] * s) / (-l1[1]) for s in samp])   #values of the line to be plot --> simpler if I use list comprehension
 
     # I need to limit the points I am taking by considering the image dimension m
     # --> i want only the points inside the image
     p_in = (val >= 0) & (val < m)
-    if ax is None:
-        ax = plt.plot( val[p_in], linewidth=1) #samp[p_in],
-        plt.plot(x[0], x[1], 'ro')
+    ax = plt.plot(samp[p_in], val[p_in], linewidth=1)
+    # if ax is None:
+    #     ax = plt.plot(samp[p_in], val[p_in], linewidth=1) #samp[p_in],
+    #    # plt.plot(x[0], x[1], 'ro')
 
     if show_epipole is True:
-        ax.plot(e[0] / e[2], e[1] / e[2], 'r*')
+        ax=plt.plot(e[0] / e[2], e[1] / e[2], 'bx') #plot blue x-es where there are the epipolar points
 
-    #oppure:
-    # if ax is None:
-    #    ax = plt
-    #ax.plot(t[ndx], lt[ndx], linewidth=2)
-    #ax.plot(e[0] / e[2], e[1] / e[2], 'r*')
-
-
-
-
-
-    
 
 
 """
