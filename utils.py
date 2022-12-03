@@ -1,74 +1,34 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-""" NORMALIZED 8-point algorithm
-- Center the image data at the origin, and scale it so the mean squared distance between the origin
-     and the data points is 2 pixels
-- Use the eight-point algorithm to compute F from the normalized points
-- Enforce the rank-2 constraint (for example, take SVD of F and throw out the smallest singular value)
-- Transform fundamental matrix back to original units: if T and T’ are the normalizing transformations 
-    in the two images, than the fundamental matrix in original coordinates is T’^T F T
-
-(if I call p1 and p2 the two projection points in homogenous coordinates, also called as x1,x2)
-1. p1_n= T1*p1 , p2_n= T2*p2
-2. use normalized coordiantes '1_n and p2_n to estimatermalized F_n with 8-point algorithm -->p2_n^T * F_n * p1_n=0
-3. compute un-normlaized F form F_n --> p2_n^T= p2^T*T2^T and p1_n= T1*p1 --> F= T2^T*F_n*T1
-
-"""
 def get_normalization_matrix(x):
     """
     - get_normalization_matrix Returns the transformation matrix used to normalize the inputs x
-    -  Normalization corresponds to subtracting mean-position and positions have a mean distance of sqrt(2) to the center
-    
-    --> Transform image coordinates so that they are in the range ~[-1,1]×[-1,1] --> rescale the two point sets such that
-     the centroid of each set is 0 and the mean standard deviation sqrt(2) 
-     
-     IF I CONSIDER:
-     msd= (1/N)*sum of i over N (||pi - µ||^2)= mean standard deviation
-     ---> where norm 2 squared is the sum of the squared values of the norm
-     µ = (µx, µy)= (1/N)*sum of i over N (pi)= centroid
-     ---> pi_n= (sqrt(2)/msd)*(pi -µ)
-
-     This in matrix form becomes:
-     pi_n=[(sqrt(2)/msd), 0, (-sqrt(2)/msd)*µx ; 0, (sqrt(2)/msd), (-sqrt(2)/msd)*µy ; 0, 0, 1]*pi
-
+    -  Normalization corresponds to subtracting mean-position and positions have a mean distance of sqrt(2) to the center    
     """
     # Input: x 3*N  --> I want the first three rows and all columns of the inputs 2D points
     #I consider x as general input, that the first time called is is x1 and the second is x2
     x_2D = x[:2,:] 
-    
-    # Output: T 3x3 transformation matrix of points
+
     # Get centroid and mean-distance to centroid
-    #centroid ???????????
+    #mean --> µ = (µx, µy) has two dimensions--> mean over the columns (axis=1)
     """ I want to compute the mean along the 1 axis, and I set keepdims=True so the axes which are reduced are left
         in the result as dimensions with size one --> so the result will broadcast correctly against the input array.
     """
-    #mean --> µ = (µx, µy) has two dimensions--> mean over the columns (axis=1)
     centroid= np.mean(x_2D, axis= 1, keepdims=True) 
       
-    #mean standard deviation --> The standard deviation is the square root of the average of the squared deviations from the mean, i.e., std = sqrt(mean(x)), where x = abs(a - a.mean())**2.
-    # A) msd= np.mean (np.sum((x_2D - centroid) ** 2, axis=0)) 
-    # B) msd= np.mean(np.linalg.norm(x_2D - centroid, ord=2) ** 2)
-    # C) distances = np.sum((x_2D - centroid)**2, axis=1) --> 
-    # D) distance = x_2D - centroid --> msd =np.mean(np.std((x_2D - centroid), axis=1))
-    # E) msd= np.sqrt(np.mean(np.sum((distance) ** 2, axis=1)))
-    # F) msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))  !!!!!!!!!!!!
-    
-   
-    #A) --> msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))
-    #B) --> msd=np.mean (np.sum((distance) ** 2, axis=0)) 
-    #C) --> msd= np.mean(np.std((x_2D), axis=1)) 
-    # #I perform the mean standard deviation along axis 0 --> rows
+    #mean standard deviation --> The standard deviation is the square root of the average of the squared deviations from the mean
+    #I perform the mean standard deviation along axis 0 --> rows
     distance = x_2D - centroid
     msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))
     centroid = centroid.flatten()
     print("msd = ", msd)
-
+    
+    # Output: T 3x3 transformation matrix of points
     #TRANSFORMATION MATRIX used to normalize the inputs x
     T = np.array([[(np.sqrt(2) / msd), 0, (-centroid[0] * np.sqrt(2) / msd)], #µx
                   [0, (np.sqrt(2) / msd), (-centroid[1] * np.sqrt(2) / msd)], #µy
                   [0, 0, 1]])
-
 
     return T #returns the transformation matrix used to normalize the inputs
 
@@ -94,8 +54,8 @@ def eight_points_algorithm(x1, x2, normalize=True):
         T2= get_normalization_matrix(x2)
 
         # Normalize inputs --> matrix multiplication of T(3x3) @ x (3xN)
-        x1_n= T1 @ x1 #x1_n
-        x2_n= T2 @ x2 #x2_n
+        x1_n= T1 @ x1 #x1 normalized
+        x2_n= T2 @ x2 #x2 normalized
 
       
     """ Epipolar constraint calibrated case, when Kand K' of the two cameras are known: (xʹ)dot[(t)cross(Rx)]=0 
@@ -123,9 +83,8 @@ def eight_points_algorithm(x1, x2, normalize=True):
     # Each point pair (according to epipolar constraint) contributes only to one scalar equation --> We need at least 8 points, the 9th equation can be derived from the other eight
 
     #I construct A as a 9-rows matrix where each row is defined by the constraint over x1 and x2 
-    # I want to construct a matrix with 9 rows agiven by the sum of the 
     # I set the `axis` parameter  to 1 to specify that I want to stack the input arrays along the columns
-    # the value of the last column is all 1, since it counts for the elemtns of the F matrix in the line equation
+    # the value of the last column is all 1, since it counts for the elements of the F matrix in the line equation
     
    
     # I obtian a system of 9 equations as the 9 entries of F that can be summarized in matrix form as Af=0, where ||f||^2=1
@@ -140,15 +99,9 @@ def eight_points_algorithm(x1, x2, normalize=True):
             x2_n[1, :],
             x1_n[0, :],
             x1_n[1, :],
-            np.ones((N,))), 1)
+            np.ones((N,))), axis= 1)
     
-
-    #I need to put together a sequence of arrays along a new axis 
-    # --> it returns a stacked array with one more dimension than the input arrays
-    #A = np.stack((a, b, c, d, e, f, g, h, i), axis=1) #Join a sequence of arrays along a new axis 
-    #--> by using concatenate I can do it along an existing axis but it is slower : A = np.concatenate((a, b, c, d, e, f, g, h, i), axis=1)
-    #print("A=", A)
-
+    # it returns a stacked array with one more dimension than the input arrays
 
     """
     For Uncalibrated cases, so when matrices K and K' intrinsics of the camera are unknown --> the epipolar
@@ -284,73 +237,3 @@ def plot_epipolar_line(im, F, x, e, show_epipole=True): #ax=None,
 
 
 
-"""
-plot_epipolar_lines(im1, im2, points1, points2, show_epipole=True)
-
-h, w = im1.shape
-
-nrows = 2
-ncols = 1
-fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(6, 8))
-
-# plot image 1
-ax1 = axes[0]
-ax1.set_title("Image 1 warped")
-ax1.imshow(im1_warped, cmap="gray")
-
-# plot image 2
-ax2 = axes[1]
-ax2.set_title("Image 2 warped")
-ax2.imshow(im2_warped, cmap="gray")
-
-# plot the epipolar lines and points
-n = new_points1.shape[0]
-for i in range(n):
-    p1 = new_points1[i]
-    p2 = new_points2[i]
-
-    ax1.hlines(p2[1], 0, w, color="orange")
-    ax1.scatter(*p1[:2], color="blue")
-
-    ax2.hlines(p1[1], 0, w, color="orange")
-    ax2.scatter(*p2[:2], color="blue")
-
-
-
-#Method 2
- nrows = 1
-ncols = 2
-h, w = img_size
-
-fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(6, 4))
-
-# Epipolar line in camera 1 given the point wrt camera 2
-ax1 = axes[0]
-ax1.set_title("camera 1")
-ax1.set(xlim = (-(h // 2), w // 2), ylim = (-(h // 2), w // 2))
-
-# compute the epipolar line in camera 1
-coeffs = (point_c2.T @ essential_matrix).reshape(-1)
-x, y = plot_line(coeffs, (-1, 1))
-
-# convert c2_intn from homogeneous coordinate to pixel coordinate
-u, v = to_eucld_coords(c1_intn).reshape(-1)
-
-ax1.plot(x, y, label="epipolar line")
-ax1.scatter(u, v, color="orange", label="point")
-
-# Epipolar line in camera 2 given the point wrt camera 1
-ax2 = axes[1]
-ax2.set_title("camera 2")
-ax2.set(xlim = (-(h // 2), w // 2), ylim = (-(h // 2), w // 2))
-
-coeffs = (essential_matrix @ point_c1).reshape(-1)
-x, y = plot_line(coeffs, (-1, 1))
-
-u, v = to_eucld_coords(c2_intn).reshape(-1)
-
-ax2.plot(x, y, label="epipolar line")
-ax2.scatter(u, v, color="orange", label="point")
-
-plt.tight_layout()
-"""
