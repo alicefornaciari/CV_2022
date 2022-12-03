@@ -143,13 +143,13 @@ def eight_points_algorithm(x1, x2, normalize=True):
     #V_t= V.transpose()
 
     #F is the last column of V, vector corresponding to the smallest singular value
-    F_n = V.transpose()[:, 8].reshape(3,3) #column 9, but since I count from 0 the last one is 8--> V.transpose()[:, -1].reshape(3,3)
-    # Iget a vector that I need to rehsape in a 3x3 matrix, the normalized Functional matrix
-    print("F normalized = ", F_n) 
+    F = V.transpose()[:, 8].reshape(3,3) #column 9, but since I count from 0 the last one is 8--> V.transpose()[:, -1].reshape(3,3)
+    # I get a vector that I need to rehsape in a 3x3 matrix, the normalized Functional matrix
+    print("F solved with SVD = ", F) 
 
     # Enforce that rank(F)=2 --> verify that the fundamental matrix F has rank 2
     # I enforce rank 2 by zeroing out last singular value
-    U, S, V = np.linalg.svd(F_n, full_matrices=True)  #???????????dire cosa sono S V U
+    U, S, V = np.linalg.svd(F, full_matrices=True)  #???????????dire cosa sono S V U
     S[2] = 0 # I am zeroing down the last singualr value of S (position 2--> 3rd element)
     #I restore F as the matrix product of the matrices obtained with the singular value decomposition:
     F_n = U @ np.diag(S) @ V
@@ -178,7 +178,7 @@ def right_epipole(F, type="right"):
     To find the epipole for the other image, I find the linear least square estimate of F transpose.
     (Use with F.T for left epipole --> to compute the other epipole)
 
-    The function compute_epipole is used to calculate the epipoles for a given fundamental matrix and corner point correspondences in the two images.
+    This function is used to calculate the right_epipole for a given fundamental matrix and corner point correspondences in the two images.
 
     """
     if type == "right": #default value is used for the right epipole
@@ -229,11 +229,14 @@ def plot_epipolar_line(im, F, x, e, show_epipole=True): #ax=None,
     p_in = (val >= 0) & (val < m)
     plt.plot(samp[p_in], val[p_in], linewidth=1)
     # if ax is None:
-    #     ax = plt.plot(samp[p_in], val[p_in], linewidth=1) #samp[p_in],
-    #    # plt.plot(x[0], x[1], 'ro')
+    #     ax = plt.plot(samp[p_in], val[p_in], linewidth=2) #samp[p_in],
+    #     if show_epipole is True:
+    #         plt.plot(e[0] / e[2], e[1] / e[2], 'bx' )
+
+    # #    # plt.plot(x[0], x[1], 'ro')
 
     if show_epipole is True:
-        plt.plot(e[0] / e[2], e[1] / e[2], 'bx') #plot blue x-es where there are the epipolar points
+        ax= plt.plot(e[0] / e[2], e[1] / e[2], 'bx' ) #plot blue x-es where there are the epipolar points
 
 
 
