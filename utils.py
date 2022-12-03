@@ -54,11 +54,13 @@ def get_normalization_matrix(x):
     # E) msd= np.sqrt(np.mean(np.sum((distance) ** 2, axis=1)))
     # F) msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))  !!!!!!!!!!!!
     
-    distance = x_2D - centroid
+   
     #A) --> msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))
     #B) --> msd=np.mean (np.sum((distance) ** 2, axis=0)) 
-    # C)
-    msd= np.mean(np.std((x_2D), axis=1)) #I perform the mean standard deviation along axis 0 --> rows
+    #C) --> msd= np.mean(np.std((x_2D), axis=1)) 
+    # #I perform the mean standard deviation along axis 0 --> rows
+    distance = x_2D - centroid
+    msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))
     centroid = centroid.flatten()
     print("msd = ", msd)
 
@@ -252,13 +254,12 @@ def right_epipole(F, type="right"):
 
 #     return e
 
-def plot_epipolar_line(im, F, x, e, show_epipole=False): #ax=None,
+def plot_epipolar_line(im, F, x, e, show_epipole=True): #ax=None,
     """
     Plot the epipole and epipolar line F*x=0 in an image. 
     F is the fundamental matrix, passed transpose
     and x a point in the other image.
     """
-    #TODO understand why and find a different solution
 
     m, n = im.shape[:2] #These are the min and max value, that set the limits within which I consider the points
     #range = np.ptp(x, 1) * 0.01 #returns the range of x (max-min) over axis=1, so returns values subtracting max and min for each row
@@ -273,13 +274,13 @@ def plot_epipolar_line(im, F, x, e, show_epipole=False): #ax=None,
     # I need to limit the points I am taking by considering the image dimension m
     # --> i want only the points inside the image
     p_in = (val >= 0) & (val < m)
-    ax = plt.plot(samp[p_in], val[p_in], linewidth=1)
+    plt.plot(samp[p_in], val[p_in], linewidth=1)
     # if ax is None:
     #     ax = plt.plot(samp[p_in], val[p_in], linewidth=1) #samp[p_in],
     #    # plt.plot(x[0], x[1], 'ro')
 
     if show_epipole is True:
-        ax=plt.plot(e[0] / e[2], e[1] / e[2], 'bx') #plot blue x-es where there are the epipolar points
+        plt.plot(e[0] / e[2], e[1] / e[2], 'bx') #plot blue x-es where there are the epipolar points
 
 
 
