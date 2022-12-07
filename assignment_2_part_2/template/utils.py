@@ -2,30 +2,37 @@ import numpy as np
 import scipy.sparse as sparse
 from scipy.sparse.linalg import lsmr
 
-
 def get_normalization_matrix(x):
     """
-    get_normalization_matrix Returns the transformation matrix used to normalize
-    the inputs x
-    Normalization corresponds to subtracting mean-position and positions
-    have a mean distance of sqrt(2) to the center
+    - get_normalization_matrix Returns the transformation matrix used to normalize the inputs x
+    -  Normalization corresponds to subtracting mean-position and positions have a mean distance of sqrt(2) to the center    
     """
-    # Input: x 3*N
-    #
+    # Input: x 3*N  --> I want the first three rows and all columns of the inputs 2D points
+    #I consider x as general input, that the first time called is x1 and the second is x2
+    x_2D = x[:2,:] #2D point
+
+    # Get centroid and mean-distance to centroid (as studied in theory)
+    #mean --> µ = (µx, µy) has two dimensions--> I compute mean over the columns (axis=1) and I set keepdims=True so the axes which are reduced are left in the result as dimensions with size one 
+    # In this way the result will broadcast correctly against the input array. 
+    centroid= np.mean(x_2D, axis= 1, keepdims=True) 
+      
+    #mean standard deviation --> The standard deviation is the square root of the average of the squared deviations from the mean
+    #I perform the mean standard deviation along axis 0 (rows)
+    distance = x_2D - centroid
+    msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))
+    centroid = centroid.flatten() #I need to do this to have the right dimensions for the T matrix
+    print("msd = ", msd)
+    
     # Output: T 3x3 transformation matrix of points
+    #TRANSFORMATION MATRIX used to normalize the inputs x (constructed following the theoretical knowledge)
+    T = np.array([[(np.sqrt(2) / msd), 0, (-centroid[0] * np.sqrt(2) / msd)], #µx
+                  [0, (np.sqrt(2) / msd), (-centroid[1] * np.sqrt(2) / msd)], #µy
+                  [0, 0, 1]])
 
-    # TODO
-    # --------------------------------------------------------------
-    # Estimate transformation matrix used to normalize
-    # the inputs x
-    # --------------------------------------------------------------
-
-    # Get centroid and mean-distance to centroid
-
-    return T
+    return T #returns the transformation matrix used to normalize the inputs
 
 
-def eight_points_algorithm(x1, x2, normalize=True):
+def eight_points_algorithm(x1, x2, normalize=True):#True by default
     """
     Calculates the fundamental matrix between two views using the normalized 8 point algorithm
     Inputs:
@@ -33,35 +40,87 @@ def eight_points_algorithm(x1, x2, normalize=True):
                     x2      3xN     homogeneous coordinates of matched points in view 2
     Outputs:
                     F       3x3     fundamental matrix
+
+    The poor numerical conditioning due tue the gap between quadratic and linear terms, which makes results very sensitive to noise, 
+    can be solved by applying the normalized 8-point algorithm that rescales the data in the range [-1,1], following these three steps;
+    1. Normalization of the point correspondences; x1_n= T1*x1 , x2_n= T2*x2
+    2. Use of normalized coordiantes x1_n and x2_n to estimatermalized F_n with 8-point algorithm -->x2_n^T * F_n * x1_n=0
+    3. Compute un-normlaized F form F_n --> x2_n^T= x2^T*T2^T and x1_n= T1*p1 --> F= T2^T*F_n*T1
     """
-    N = x1.shape[1]
+
+    N = x1.shape[1] #I look at the second dimension of x1
+
+    if normalize: 
+        #Call the funciton get_normalization_matrix(x) to obtain the matrices T1 and T2 to normalize the coordinates
+        T1= get_normalization_matrix(x1)
+        T2= get_normalization_matrix(x2)
+
+        # Normalize the inputs --> matrix multiplication between T(3x3) @ x (3xN)
+        x1_n= T1 @ x1 #x1 normalized
+        x2_n= T2 @ x2 #x2 normalized
+
+
+    # Construct matrix A encoding the constraints on x1 and x2 for matrix F --> homogenous system with  9 unknowns
+   
+    # Each point pair (according to epipolar constraint) contributes only to one scalar equation --> We need at least 8 points, the 9th equation can be derived from the other eight
+    # - I construct A as a 9-rows matrix where each row is defined by the constraint over x1 and x2 
+    # - I set the `axis` parameter  to 1 to specify that I want to stack the input arrays along the columns
+    # - The value of the last column is all 1, since it counts for the elements of the F matrix in the line equation
+    
+   
+    # I obtian a system of 9 equations as the 9 entries of F that can be summarized in matrix form as Af=0,subject to ||f||^2=1.
+    # And where A is the point correspondence matrix and vector f is the flattened fundamental matrix.
+    # ---> I solve this lienar system by minimizing ||Af||^2 subject to ||f||^2=1
+    
+    A = np.stack((x2_n[0, :] * x1_n[0, :],
+                  x2_n[0, :] * x1_n[1, :],
+                  x2_n[0, :],
+                  x2_n[1, :] * x1_n[0, :],
+                  x2_n[1, :] * x1_n[1, :],
+                  x2_n[1, :],
+                  x1_n[0, :],
+                  x1_n[1, :],
+                  np.ones((N,))), axis= 1)
+    
+    # Solve for f using SVD --> application of the singualr value decomposition A=USV^t
+    # It's obtianed by using the linear algebraic function 'svd' on the numpy libray
+    # I consider by default full_matrices=True so for example if A is a matrix of dimensions (MxN), then U and V have the shapes (..., M, M) and (..., N, N), respectively.
+    # _, _, V would work as well sincec I need only V (actually I am interested in V.T)
+    U, S , V = np.linalg.svd(A, full_matrices=True)
+
+    #F is the last column of V transpose, vector corresponding to the smallest singular value 
+    #I am interested in the last column (V.transpose() is like doing V.T)
+    # I get a vector that I need to rehsape in a 3x3 matrix, the normalized Functional matrix
+    F = V.transpose()[:, 8].reshape(3,3) 
+    print("F solved with SVD = ", F) 
+
+    # Enforce that rank(F)=2 --> verify that the fundamental matrix F has rank 2
+    # I enforce rank 2 by zeroing out the last singular value
+    U, S, V = np.linalg.svd(F, full_matrices=True) 
+
+    # I am zeroing down the last singualr value of S (position 2--> 3rd element)
+    S[2] = 0 
+
+    #I restore F as the matrix product of the matrices obtained with the singular value decomposition:
+    F_n = U @ np.diag(S) @ V
+    print("F_n =", F_n)
 
     if normalize:
-        # Construct transformation matrices to normalize the coordinates
-        # TODO
-
-        # Normalize inputs
-        # TODO
-        pass
-
-    # Construct matrix A encoding the constraints on x1 and x2
-    # TODO
-
-    # Solve for f using SVD
-    # TODO
-
-    # Enforce that rank(F)=2
-    # TODO
-
-    if normalize:
-        # Transform F back
-        # TODO
-        pass
-
+        #Transform F back --> I need to go from F_n back to F, by applying:  F= T2^T*F_n*T1
+        T2_t= T2.transpose()
+        # Matrix product
+        F = T2_t @ F_n @ T1
     return F
 
 
+
 def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
+    """
+    I need in INPUT 
+    - cor1, cor2: corners in image1 (x1) and image2 (x2)
+    - threshold: Threshold for accepting inliers
+    - num_steps: number of samples/iterations for RANSAC
+    """
     if random_seed is not None:
         np.random.seed(random_seed)  # we are using a random seed to make the results reproducible
     # TODO setup variables
@@ -70,7 +129,19 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
     # TODO calculate initial inliers with with the best candidate points
     # TODO estimate F with all the inliers
     # TODO find final inliers with F
+
+    """
+    Output:
+    - F: best fundamental matrix
+    - inliers: record the best number of inliers so far at each iteration, w
+    """
     return F, inliers  # F is estimated fundamental matrix and inliers is an indicator (boolean) numpy array
+
+
+def get_essential_matrix(F, K1, K2):
+
+    E = K2.T.dot(F).dot(K1)
+    return E
 
 
 def decompose_essential_matrix(E, x1, x2):
@@ -85,6 +156,30 @@ def decompose_essential_matrix(E, x1, x2):
     Pl = np.concatenate((Rl, tl), axis=1)
 
     # TODO: Compute possible rotations and translations
+
+    # decompose essential matrix into R, t (See Hartley and Zisserman 3)
+    #Apply singualr value decomposition to E
+    U, S, V = np.linalg.svd(E, full_matrices=True) 
+    #Enforcing rank-2 constraint: set smallest singular value of S to 0 -->I am zeroing down the last singualr value of S (position 2--> 3rd element)
+    S[2] = 0 
+    W = np.array([0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]).reshape(3, 3)
+
+    t1 = U[:, 2]
+    t2= - t1
+
+    R1 = U * W * V.T
+    R2 = U * W.T * V.T
+    
+    #Make sure that the returned rotation matrices are valid, hence with det=1 and not det= -1 --> if -1 then invert the sign of the matrix
+    #R1 = R1 * sign(det(R1)) * sign(det(K))
+    #R2 = R2 * sign(det(R2)) * sign(det(K))
+    det1 = scipy.linalg.det(R1)
+    det2 = scipy.linalg.det(R2)
+    if det1 == -1:
+        R1 = -R1  
+    if det2 == -1:
+        R2 = -R2
+
 
     # Four possibilities
     Pr = [np.concatenate((R1, t1), axis=1),
@@ -143,3 +238,4 @@ def infer_3d(x1, x2, Pl, Pr):
     x3d = w.reshape(M, 3).T
 
     return x3d
+
