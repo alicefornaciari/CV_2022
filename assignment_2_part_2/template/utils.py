@@ -1,6 +1,9 @@
 import numpy as np
+import scipy
 import scipy.sparse as sparse
 from scipy.sparse.linalg import lsmr
+import math
+
 
 def get_normalization_matrix(x):
     """
@@ -112,23 +115,105 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default
         F = T2_t @ F_n @ T1
     return F
 
-
+def reprojection_error (F_sampled,x1,x2):
+    #find an intercept of a normal from the given point to the model
+    x1_transf = F_sampled @ x1
+    x2_transf = x2.T @ F_sampled
+    err = (np.norm(x1 - x1_transf, axis=0) ** 2)+ (np.norm(x2 - x2_transf, axis=0) ** 2)
+    return err
 
 def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
-    """
-    I need in INPUT 
-    - cor1, cor2: corners in image1 (x1) and image2 (x2)
-    - threshold: Threshold for accepting inliers
-    - num_steps: number of samples/iterations for RANSAC
-    """
+
+    N = x1.shape[1]
     if random_seed is not None:
         np.random.seed(random_seed)  # we are using a random seed to make the results reproducible
-    # TODO setup variables
+    
+    max_inlier_count = 0
+    num_inlier_count = 0
+    
+    prob =0.99
+    e_out = 0.5 # proportion of outliers, outliers ratio
+    min_num =8 #min number of points needed to fit the model
+
+
     for _ in range(num_steps):
-        pass # TODO main loop
-    # TODO calculate initial inliers with with the best candidate points
-    # TODO estimate F with all the inliers
-    # TODO find final inliers with F
+        num_samp = np.log(1 - prob) / np.log(1- (1 - e_out)^min_num)  #should give 1177 number of sampling points
+        s = np.random.randint(low=0,high=N,size= num_samp) 
+        x1_sampled= x1[..., s]
+        x2_sampled= x2[..., s]
+        # Fit the model F to these sampled points
+        F_sampled = eight_points_algorithm(x1_sampled, x2_sampled)
+        #F= eight_points_algorithm(x1, x2)
+        inliers=[]
+        x1_inliers=[]
+        x2_inliers=[]
+       
+        distance = reprojection_error(F_sampled, x1,x2) 
+        if np.sum(distance) < threshold:
+            x1_inliers.append(x1[distance < threshold])
+            x2_inliers = x2[distance < threshold]
+
+            num_inlier_count += 1
+            inliers.append()
+
+        # if num_inlier_count > max_inlier_count:
+        #     max_inlier_count = num_inlier_count
+        #     inliers= 
+
+        
+        # for i in range N:
+        #     dist1 = x1[...,i] - x1_sampled[...,i]
+        #     dist2= x2[...,i] - x2_sampled[...,i]
+        #     distance1 = np.linalg.norm(dist1, axis=1)
+        #     distance2 = np.linalg.norm(dist2, axis=1)
+            
+        #     if distance1 < threshold:
+        #         inliers1.append(x1[...,i])
+        #         num_inlier_count +=1
+               
+        #         if num_inlier_count > max_inlier_count:
+        #             max_inlier_count = num_inlier_count
+        #             inliers.append(inliers1)
+
+        #     if distance2 < threshold:
+        #         inliers2.append(x2[...,i])
+        #         num_inlier_count +=1
+                
+        #         if num_inlier_count > max_inlier_count:
+        #             max_inlier_count = num_inlier_count
+        #             inliers.append(inliers2)
+
+
+    
+        # #estimate F with all the inliers --> reapply 8-point alg
+        F = eight_points_algorithm(x1_inliers, x2_inliers)
+        
+
+        # # x1_inliers = []
+        # # x2_inliers = []
+        # #compute the re-projection error on the 2D points and count the inliers -->  Find inliers to this line among the remaining points (i.e., points whose distance from the line is less than t)
+        # #the found points are considered inliers, test all other points against the fitted model
+        # for i in range N:
+        #     # find an intercept of the model with a normal from the point
+        #     intercept_point_1 = find_intercept(F, x1[...,i])
+        #     intercept_point_2 = find_intercept(F, x2[...,i])
+
+        #     # calculate initial inliers with with the best candidate points 
+        #     if distance(intercept_point_1,x1[...,i]) < threshold:
+        #         x1_inliers.append(x1[...,i])
+        #         num_inliers_1 +=1
+
+        #     if distance(intercept_point_2,x2[...,i]) < threshold:
+        #         x2_inliers.append(x2[...,i])
+        #         num_inliers_2 +=1
+        # #Choose the fundamental matrix estimate that gives the highest number of inliers
+        
+        # #find final inliers with F
+        # x1_all_inliers = x1_inliers
+        # x2_all_inliers = x2_inliers
+
+        # #Compute the re-projection error on all 2D points and detect the outliers
+        
 
     """
     Output:
@@ -137,10 +222,65 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
     """
     return F, inliers  # F is estimated fundamental matrix and inliers is an indicator (boolean) numpy array
 
+"""
+def ransacF(pts1, pts2, M):
+    # Replace pass by your implementation
+
+    max_inliers  =  -np.inf
+    inliers_best = np.zeros(pts1.shape[0], dtype=bool)
+    points_index_best  = None
+    threshold = 1e-3
+
+    epochs = 1000
+    for e in range(epochs):
+        points_index = random.sample(range(0, pts1.shape[0]), 7)
+        # print(points_index)
+        sevenpoints_1 = []
+        sevenpoints_2 = []
+        for point in points_index:
+            sevenpoints_1.append(pts1[point, :])
+            sevenpoints_2.append(pts2[point, :])
+        sevenpoints_1 = np.asarray(sevenpoints_1)
+        sevenpoints_2 = np.asarray(sevenpoints_2)
+
+        F_list =  sevenpoint(sevenpoints_1, sevenpoints_2, M)
+        for j in range(F_list.shape[2]):
+            f = F_list[:, :, j]
+            num_inliers = 0
+            inliers = np.zeros(pts1.shape[0], dtype=bool)
+            for k in range(pts1.shape[0]):
+                X2 = np.asarray(  [pts2[k,0], pts2[k,1], 1] )
+                X1 = np.asarray(  [pts1[k,0], pts1[k,1], 1] )
+
+                if abs(X2.T.dot(f).dot(X1)) < threshold:
+                    num_inliers = num_inliers +1
+                    inliers[k] = True
+                else:
+                    inliers[k] = False
+
+            # print(num_inliers)
+
+            if num_inliers>max_inliers:
+                max_inliers = num_inliers
+                inliers_best = inliers
+                points_index_best = points_index
+
+    print('epoch: ', epochs-1, 'max_inliers: ', max_inliers)
+    # print('points_index_best: ', points_index_best)
+
+    # RE-DOING EIGHT POINT ALGO AFTER RANSAC WITH INLIER POINTS
+    pts1_inliers= pts1[np.where(inliers_best)]
+    pts2_inliers= pts2[np.where(inliers_best)]
+
+    F_best_all_inliers = eightpoint(pts1_inliers, pts2_inliers, M)
+
+    return F_best_all_inliers, inliers_best
+"""
+
 
 def get_essential_matrix(F, K1, K2):
-
-    E = K2.T.dot(F).dot(K1)
+    #E = K2.T.dot(F).dot(K1)
+    E = K2.T @ F @ K1
     return E
 
 
@@ -164,20 +304,21 @@ def decompose_essential_matrix(E, x1, x2):
     S[2] = 0 
     W = np.array([0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]).reshape(3, 3)
 
-    t1 = U[:, 2]
+    t1 = U[:, 2] #translation
     t2= - t1
+    # if norm(u3) ~= 0:
+    #     u3 = u3/norm(u3)
 
     R1 = U * W * V.T
     R2 = U * W.T * V.T
-    
     #Make sure that the returned rotation matrices are valid, hence with det=1 and not det= -1 --> if -1 then invert the sign of the matrix
     #R1 = R1 * sign(det(R1)) * sign(det(K))
     #R2 = R2 * sign(det(R2)) * sign(det(K))
-    det1 = scipy.linalg.det(R1)
+    det1 = scipy.linalg.det(R1) #np.linalg.det(np.dot(U, V)) < 0:
     det2 = scipy.linalg.det(R2)
-    if det1 == -1:
+    if det1 == -1: #det1<0
         R1 = -R1  
-    if det2 == -1:
+    if det2 == -1: #det2<0
         R2 = -R2
 
 
