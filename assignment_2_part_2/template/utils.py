@@ -2,7 +2,6 @@ import numpy as np
 import scipy
 import scipy.sparse as sparse
 from scipy.sparse.linalg import lsmr
-import math
 from collections import defaultdict
 
 
@@ -25,7 +24,7 @@ def get_normalization_matrix(x):
     distance = x_2D - centroid
     msd=np.mean(np.sqrt(np.sum((distance) ** 2, axis=0)))
     centroid = centroid.flatten() #I need to do this to have the right dimensions for the T matrix
-    print("msd = ", msd)
+    #print("msd = ", msd)
     
     # Output: T 3x3 transformation matrix of points
     #TRANSFORMATION MATRIX used to normalize the inputs x (constructed following the theoretical knowledge)
@@ -96,7 +95,7 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default
     #I am interested in the last column (V.transpose() is like doing V.T)
     # I get a vector that I need to rehsape in a 3x3 matrix, the normalized Functional matrix
     F = V.transpose()[:, 8].reshape(3,3) 
-    print("F solved with SVD = ", F) 
+    #print("F solved with SVD = ", F) 
 
     # Enforce that rank(F)=2 --> verify that the fundamental matrix F has rank 2
     # I enforce rank 2 by zeroing out the last singular value
@@ -107,7 +106,7 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default
 
     #I restore F as the matrix product of the matrices obtained with the singular value decomposition:
     F_n = U @ np.diag(S) @ V
-    print("F_n =", F_n)
+    #print("F_n =", F_n)
 
     if normalize:
         #Transform F back --> I need to go from F_n back to F, by applying:  F= T2^T*F_n*T1
@@ -119,8 +118,9 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default
 def reprojection_error (F_sampled,x1,x2):
     #find an intercept of a normal from the given point to the model
     x1_transf = F_sampled @ x1
-    x2_transf = x2.T @ F_sampled
-    err = (np.norm(x1 - x1_transf, axis=0) ** 2)+ (np.norm(x2 - x2_transf, axis=0) ** 2)
+    x2_transf = F_sampled.T @ x2 #x2.T @ F_sampled
+    err = (np.linalg.norm(x1 - x1_transf, axis=0) ** 2)+ (np.linalg.norm(x2 - x2_transf, axis=0) ** 2)
+    err = err /(np.linalg.norm(err))
     return err
 
 def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
@@ -143,7 +143,7 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
 
 
     for _ in range(num_steps):
-        num_samp = np.floor(np.log(1 - prob) / np.log(1- (1 - e_out)^min_num))  #should give 1177 number of sampling points
+        num_samp = int(round(np.log(1 - prob) / np.log(1- (1 - e_out)**min_num)))  #should give 1177 number of sampling points
         s = np.random.randint(low=0,high=N,size=num_samp) 
         x1_sampled= x1[..., s]
         x2_sampled= x2[..., s]
@@ -152,20 +152,20 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
         F_sampled = eight_points_algorithm(x1_sampled, x2_sampled)
         distance = reprojection_error(F_sampled, x1,x2) 
 
-        inliers = defaultdict(lambda: None)
-        x1_inl = x1[distance < threshold]
-        x2_inl = x2[distance < threshold]
+        inliers_couple = defaultdict(lambda: None)
+        x1_inl = x1[..., distance < threshold]
+        x2_inl = x2[..., distance < threshold]
         
         assert len(x1_inl) == len(x2_inl)
         num_inlier_count = len(x1_inl)
         if num_inlier_count > max_inlier_count:
-            inliers["x1"] = x1_inl
-            inliers["x2"] = x2_inl
+            inliers_couple["x1"] = x1_inl
+            inliers_couple["x2"] = x2_inl
             max_inlier_count = num_inlier_count
 
             # #estimate F with all the inliers --> reapply 8-point alg
-            F = eight_points_algorithm(inliers["x1"], inliers["x2"])
-            inliers = inliers["x2"] # right points
+            F = eight_points_algorithm(inliers_couple["x1"], inliers_couple["x2"])
+            inliers = inliers_couple["x2"] # right points
     
     # F is estimated fundamental matrix and inliers is an indicator (boolean) numpy array
     return F, inliers  
@@ -198,22 +198,25 @@ def decompose_essential_matrix(E, x1, x2):
     W = np.array([0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]).reshape(3, 3)
 
     t1 = U[:, 2] #translation
+    if (np.linalg.norm(t1)) != 0:
+        t1 = t1/(np.linalg.norm(t1))
+    t1 = t1[..., np.newaxis]
     t2= - t1
-    # if norm(u3) ~= 0:
-    #     u3 = u3/norm(u3)
 
-    R1 = U * W * V.T
-    R2 = U * W.T * V.T
+
+    # R1 = U * W * V.T
+    # R2 = U * W.T * V.T
+    R1 = U * W * V
+    R2 = U * W.T * V
     #Make sure that the returned rotation matrices are valid, hence with det=1 and not det= -1 --> if -1 then invert the sign of the matrix
     #R1 = R1 * sign(det(R1)) * sign(det(K))
     #R2 = R2 * sign(det(R2)) * sign(det(K))
     det1 = scipy.linalg.det(R1) #np.linalg.det(np.dot(U, V)) < 0:
     det2 = scipy.linalg.det(R2)
-    if det1 == -1: #det1<0
+    if det1 < 0: 
         R1 = -R1  
-    if det2 == -1: #det2<0
+    if det2 < 0:
         R2 = -R2
-
 
     # Four possibilities
     Pr = [np.concatenate((R1, t1), axis=1),
@@ -222,11 +225,10 @@ def decompose_essential_matrix(E, x1, x2):
           np.concatenate((R2, t2), axis=1)]
 
     # Compute reconstructions for all possible right camera-matrices
-    X3Ds = [infer3D(x1[:, 0:1], x2[:, 0:1], Pl, x) for x in Pr]
+    X3Ds = [infer_3d(x1[:, 0:1], x2[:, 0:1], Pl, x) for x in Pr]
 
     # Compute projections on image-planes and find when both cameras see point
-    test = [np.prod(np.hstack((Pl @ np.vstack((X3Ds[i], [[1]])), Pr[i] @ np.vstack((X3Ds[i], [[1]])))) > 0, 1) for i in
-            range(4)]
+    test = [np.prod(np.hstack((Pl @ np.vstack((X3Ds[i], [[1]])), Pr[i] @ np.vstack((X3Ds[i], [[1]])))) > 0, 1) for i in range(4)]
     test = np.array(test)
     idx = np.where(np.hstack((test[0, 2], test[1, 2], test[2, 2], test[3, 2])) > 0.)[0][0]
 
