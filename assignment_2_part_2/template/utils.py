@@ -124,6 +124,11 @@ def reprojection_error (F_sampled,x1,x2):
     return err
 
 def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
+    """
+    Output:
+    - F: best fundamental matrix
+    - inliers: record the best number of inliers so far at each iteration, w
+    """
 
     N = x1.shape[1]
     if random_seed is not None:
@@ -148,82 +153,22 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
         distance = reprojection_error(F_sampled, x1,x2) 
 
         inliers = defaultdict(lambda: None)
-        if np.sum(distance) < threshold:
-            x1_inl = x1[distance < threshold]
-            x2_inl = x2[distance < threshold]
-            
-            assert len(x1_inl) == len(x2_inl)
-            num_inlier_count = len(x1_inl)
-            if num_inlier_count > max_inlier_count:
-                max_inlier_count = num_inlier_count
-                inliers["x1"] = x1_inl
-                inliers["x2"] = x2_inl
-
-    
-        # #estimate F with all the inliers --> reapply 8-point alg
-        F = eight_points_algorithm(inliers["x1"], inliers["x2"])
+        x1_inl = x1[distance < threshold]
+        x2_inl = x2[distance < threshold]
         
-    """
-    Output:
-    - F: best fundamental matrix
-    - inliers: record the best number of inliers so far at each iteration, w
-    """
-    return F, inliers  # F is estimated fundamental matrix and inliers is an indicator (boolean) numpy array
+        assert len(x1_inl) == len(x2_inl)
+        num_inlier_count = len(x1_inl)
+        if num_inlier_count > max_inlier_count:
+            inliers["x1"] = x1_inl
+            inliers["x2"] = x2_inl
+            max_inlier_count = num_inlier_count
 
-"""
-def ransacF(pts1, pts2, M):
-    # Replace pass by your implementation
-
-    max_inliers  =  -np.inf
-    inliers_best = np.zeros(pts1.shape[0], dtype=bool)
-    points_index_best  = None
-    threshold = 1e-3
-
-    epochs = 1000
-    for e in range(epochs):
-        points_index = random.sample(range(0, pts1.shape[0]), 7)
-        # print(points_index)
-        sevenpoints_1 = []
-        sevenpoints_2 = []
-        for point in points_index:
-            sevenpoints_1.append(pts1[point, :])
-            sevenpoints_2.append(pts2[point, :])
-        sevenpoints_1 = np.asarray(sevenpoints_1)
-        sevenpoints_2 = np.asarray(sevenpoints_2)
-
-        F_list =  sevenpoint(sevenpoints_1, sevenpoints_2, M)
-        for j in range(F_list.shape[2]):
-            f = F_list[:, :, j]
-            num_inliers = 0
-            inliers = np.zeros(pts1.shape[0], dtype=bool)
-            for k in range(pts1.shape[0]):
-                X2 = np.asarray(  [pts2[k,0], pts2[k,1], 1] )
-                X1 = np.asarray(  [pts1[k,0], pts1[k,1], 1] )
-
-                if abs(X2.T.dot(f).dot(X1)) < threshold:
-                    num_inliers = num_inliers +1
-                    inliers[k] = True
-                else:
-                    inliers[k] = False
-
-            # print(num_inliers)
-
-            if num_inliers>max_inliers:
-                max_inliers = num_inliers
-                inliers_best = inliers
-                points_index_best = points_index
-
-    print('epoch: ', epochs-1, 'max_inliers: ', max_inliers)
-    # print('points_index_best: ', points_index_best)
-
-    # RE-DOING EIGHT POINT ALGO AFTER RANSAC WITH INLIER POINTS
-    pts1_inliers= pts1[np.where(inliers_best)]
-    pts2_inliers= pts2[np.where(inliers_best)]
-
-    F_best_all_inliers = eightpoint(pts1_inliers, pts2_inliers, M)
-
-    return F_best_all_inliers, inliers_best
-"""
+            # #estimate F with all the inliers --> reapply 8-point alg
+            F = eight_points_algorithm(inliers["x1"], inliers["x2"])
+            inliers = inliers["x2"] # right points
+    
+    # F is estimated fundamental matrix and inliers is an indicator (boolean) numpy array
+    return F, inliers  
 
 
 def get_essential_matrix(F, K1, K2):
