@@ -3,6 +3,7 @@ import scipy
 import scipy.sparse as sparse
 from scipy.sparse.linalg import lsmr
 import math
+from collections import defaultdict
 
 
 def get_normalization_matrix(x):
@@ -137,84 +138,31 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
 
 
     for _ in range(num_steps):
-        num_samp = np.log(1 - prob) / np.log(1- (1 - e_out)^min_num)  #should give 1177 number of sampling points
-        s = np.random.randint(low=0,high=N,size= num_samp) 
+        num_samp = np.floor(np.log(1 - prob) / np.log(1- (1 - e_out)^min_num))  #should give 1177 number of sampling points
+        s = np.random.randint(low=0,high=N,size=num_samp) 
         x1_sampled= x1[..., s]
         x2_sampled= x2[..., s]
+
         # Fit the model F to these sampled points
         F_sampled = eight_points_algorithm(x1_sampled, x2_sampled)
-        #F= eight_points_algorithm(x1, x2)
-        inliers=[]
-        x1_inliers=[]
-        x2_inliers=[]
-       
         distance = reprojection_error(F_sampled, x1,x2) 
+
+        inliers = defaultdict(lambda: None)
         if np.sum(distance) < threshold:
-            x1_inliers.append(x1[distance < threshold])
-            x2_inliers = x2[distance < threshold]
-
-            num_inlier_count += 1
-            inliers.append()
-
-        # if num_inlier_count > max_inlier_count:
-        #     max_inlier_count = num_inlier_count
-        #     inliers= 
-
-        
-        # for i in range N:
-        #     dist1 = x1[...,i] - x1_sampled[...,i]
-        #     dist2= x2[...,i] - x2_sampled[...,i]
-        #     distance1 = np.linalg.norm(dist1, axis=1)
-        #     distance2 = np.linalg.norm(dist2, axis=1)
+            x1_inl = x1[distance < threshold]
+            x2_inl = x2[distance < threshold]
             
-        #     if distance1 < threshold:
-        #         inliers1.append(x1[...,i])
-        #         num_inlier_count +=1
-               
-        #         if num_inlier_count > max_inlier_count:
-        #             max_inlier_count = num_inlier_count
-        #             inliers.append(inliers1)
-
-        #     if distance2 < threshold:
-        #         inliers2.append(x2[...,i])
-        #         num_inlier_count +=1
-                
-        #         if num_inlier_count > max_inlier_count:
-        #             max_inlier_count = num_inlier_count
-        #             inliers.append(inliers2)
-
+            assert len(x1_inl) == len(x2_inl)
+            num_inlier_count = len(x1_inl)
+            if num_inlier_count > max_inlier_count:
+                max_inlier_count = num_inlier_count
+                inliers["x1"] = x1_inl
+                inliers["x2"] = x2_inl
 
     
         # #estimate F with all the inliers --> reapply 8-point alg
-        F = eight_points_algorithm(x1_inliers, x2_inliers)
+        F = eight_points_algorithm(inliers["x1"], inliers["x2"])
         
-
-        # # x1_inliers = []
-        # # x2_inliers = []
-        # #compute the re-projection error on the 2D points and count the inliers -->  Find inliers to this line among the remaining points (i.e., points whose distance from the line is less than t)
-        # #the found points are considered inliers, test all other points against the fitted model
-        # for i in range N:
-        #     # find an intercept of the model with a normal from the point
-        #     intercept_point_1 = find_intercept(F, x1[...,i])
-        #     intercept_point_2 = find_intercept(F, x2[...,i])
-
-        #     # calculate initial inliers with with the best candidate points 
-        #     if distance(intercept_point_1,x1[...,i]) < threshold:
-        #         x1_inliers.append(x1[...,i])
-        #         num_inliers_1 +=1
-
-        #     if distance(intercept_point_2,x2[...,i]) < threshold:
-        #         x2_inliers.append(x2[...,i])
-        #         num_inliers_2 +=1
-        # #Choose the fundamental matrix estimate that gives the highest number of inliers
-        
-        # #find final inliers with F
-        # x1_all_inliers = x1_inliers
-        # x2_all_inliers = x2_inliers
-
-        # #Compute the re-projection error on all 2D points and detect the outliers
-        
-
     """
     Output:
     - F: best fundamental matrix
