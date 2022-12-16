@@ -5,7 +5,7 @@ from scipy.sparse.linalg import lsmr
 from collections import defaultdict
 
 
-def get_normalization_matrix(x):
+def get_normalization_matrix(x): #from part 1
     """
     - get_normalization_matrix Returns the transformation matrix used to normalize the inputs x
     -  Normalization corresponds to subtracting mean-position and positions have a mean distance of sqrt(2) to the center    
@@ -35,7 +35,7 @@ def get_normalization_matrix(x):
     return T #returns the transformation matrix used to normalize the inputs
 
 
-def eight_points_algorithm(x1, x2, normalize=True):#True by default
+def eight_points_algorithm(x1, x2, normalize=True):#True by default --> also form part 1
     """
     Calculates the fundamental matrix between two views using the normalized 8 point algorithm
     Inputs:
@@ -43,14 +43,7 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default
                     x2      3xN     homogeneous coordinates of matched points in view 2
     Outputs:
                     F       3x3     fundamental matrix
-
-    The poor numerical conditioning due tue the gap between quadratic and linear terms, which makes results very sensitive to noise, 
-    can be solved by applying the normalized 8-point algorithm that rescales the data in the range [-1,1], following these three steps;
-    1. Normalization of the point correspondences; x1_n= T1*x1 , x2_n= T2*x2
-    2. Use of normalized coordiantes x1_n and x2_n to estimatermalized F_n with 8-point algorithm -->x2_n^T * F_n * x1_n=0
-    3. Compute un-normlaized F form F_n --> x2_n^T= x2^T*T2^T and x1_n= T1*p1 --> F= T2^T*F_n*T1
     """
-
     N = x1.shape[1] #I look at the second dimension of x1
 
     if normalize: 
@@ -62,19 +55,7 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default
         x1_n= T1 @ x1 #x1 normalized
         x2_n= T2 @ x2 #x2 normalized
 
-
     # Construct matrix A encoding the constraints on x1 and x2 for matrix F --> homogenous system with  9 unknowns
-   
-    # Each point pair (according to epipolar constraint) contributes only to one scalar equation --> We need at least 8 points, the 9th equation can be derived from the other eight
-    # - I construct A as a 9-rows matrix where each row is defined by the constraint over x1 and x2 
-    # - I set the `axis` parameter  to 1 to specify that I want to stack the input arrays along the columns
-    # - The value of the last column is all 1, since it counts for the elements of the F matrix in the line equation
-    
-   
-    # I obtian a system of 9 equations as the 9 entries of F that can be summarized in matrix form as Af=0,subject to ||f||^2=1.
-    # And where A is the point correspondence matrix and vector f is the flattened fundamental matrix.
-    # ---> I solve this lienar system by minimizing ||Af||^2 subject to ||f||^2=1
-    
     A = np.stack((x2_n[0, :] * x1_n[0, :],
                   x2_n[0, :] * x1_n[1, :],
                   x2_n[0, :],
@@ -86,27 +67,19 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default
                   np.ones((N,))), axis= 1)
     
     # Solve for f using SVD --> application of the singualr value decomposition A=USV^t
-    # It's obtianed by using the linear algebraic function 'svd' on the numpy libray
-    # I consider by default full_matrices=True so for example if A is a matrix of dimensions (MxN), then U and V have the shapes (..., M, M) and (..., N, N), respectively.
-    # _, _, V would work as well sincec I need only V (actually I am interested in V.T)
     U, S , V = np.linalg.svd(A, full_matrices=True)
 
     #F is the last column of V transpose, vector corresponding to the smallest singular value 
-    #I am interested in the last column (V.transpose() is like doing V.T)
-    # I get a vector that I need to rehsape in a 3x3 matrix, the normalized Functional matrix
     F = V.transpose()[:, 8].reshape(3,3) 
-    #print("F solved with SVD = ", F) 
 
     # Enforce that rank(F)=2 --> verify that the fundamental matrix F has rank 2
     # I enforce rank 2 by zeroing out the last singular value
     U, S, V = np.linalg.svd(F, full_matrices=True) 
-
     # I am zeroing down the last singualr value of S (position 2--> 3rd element)
     S[2] = 0 
 
     #I restore F as the matrix product of the matrices obtained with the singular value decomposition:
     F_n = U @ np.diag(S) @ V
-    #print("F_n =", F_n)
 
     if normalize:
         #Transform F back --> I need to go from F_n back to F, by applying:  F= T2^T*F_n*T1
@@ -115,103 +88,111 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default
         F = T2_t @ F_n @ T1
     return F
 
+#Function used to compute the distance of the res of the input points to the sampled ones, hence from the model
 def reprojection_error (F_sampled,x1,x2):
     #find an intercept of a normal from the given point to the model
     x1_transf = F_sampled @ x1
     x2_transf = F_sampled.T @ x2 #x2.T @ F_sampled
+    #calculation of the distance (error)
     err = (np.linalg.norm(x1 - x1_transf, axis=0) ** 2)+ (np.linalg.norm(x2 - x2_transf, axis=0) ** 2)
+    #normalization of the error
     err = err /(np.linalg.norm(err))
+
     return err
 
 def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
     """
     Output:
     - F: best fundamental matrix
-    - inliers: record the best number of inliers so far at each iteration, w
+    - inliers: record the best number of inliers so far at each iteration
     """
-
     N = x1.shape[1]
     if random_seed is not None:
         np.random.seed(random_seed)  # we are using a random seed to make the results reproducible
     
+    #initialization of the variables to count the inliers
     max_inlier_count = 0
     num_inlier_count = 0
-    
+
+    #probabilities/ratio of inliers and outlier
     prob =0.99
-    e_out = 0.5 # proportion of outliers, outliers ratio
-    min_num =8 #min number of points needed to fit the model
+    e_out = 0.5 
+    #min number of points needed to fit the model (8-point algorithm)
+    min_num =8 
 
-
+    #iterative approach  
     for _ in range(num_steps):
-        num_samp = int(round(np.log(1 - prob) / np.log(1- (1 - e_out)**min_num)))  #should give 1177 number of sampling points
+        #definition of hte number of smaples needed for the ransac approach, randomly generated within a range from 0 and N
+        num_samp = int(round(np.log(1 - prob) / np.log(1- (1 - e_out)**min_num)))  #should give 1177 number of sampling points with min_num=8
         s = np.random.randint(low=0,high=N,size=num_samp) 
+        #assign the values of x1 and x2 in the corresponding position to two new sampled points
         x1_sampled= x1[..., s]
         x2_sampled= x2[..., s]
 
         # Fit the model F to these sampled points
         F_sampled = eight_points_algorithm(x1_sampled, x2_sampled)
+        #calculation of the distance from the sampled points to the rest of the input points
         distance = reprojection_error(F_sampled, x1,x2) 
 
+        #creation of a dictionary to contain the actual inliers for both the given inputs, considered when distance<threshold
         inliers_couple = defaultdict(lambda: None)
         x1_inl = x1[..., distance < threshold]
         x2_inl = x2[..., distance < threshold]
         
-        assert len(x1_inl) == len(x2_inl)
+        assert len(x1_inl) == len(x2_inl) 
+        #no error is retured so we have the same number of inliers, which are also the same given that the intrinsics of the camera are the same (two identical cameras)
+
+        #update number of inliers and definition of best ones wrt the max number of inliers overall 
         num_inlier_count = len(x1_inl)
         if num_inlier_count > max_inlier_count:
+            #update of the dictionary (same values for x1 and x2)
             inliers_couple["x1"] = x1_inl
             inliers_couple["x2"] = x2_inl
             max_inlier_count = num_inlier_count
 
-            # #estimate F with all the inliers --> reapply 8-point alg
+            #estimate F with all the inliers --> reapply 8-point alg
             F = eight_points_algorithm(inliers_couple["x1"], inliers_couple["x2"])
             inliers = inliers_couple["x2"] # right points
-    
-    # F is estimated fundamental matrix and inliers is an indicator (boolean) numpy array
-    return F, inliers  
+            errors = distance 
+           
+    return F, inliers, errors  
 
 
+#Computation of the essential matrix E using the known intrinsics of the cameras (K1=K2=K)
 def get_essential_matrix(F, K1, K2):
-    #E = K2.T.dot(F).dot(K1)
+    #E = K2.T.dot(F).dot(K1) alternatively
     E = K2.T @ F @ K1
     return E
 
 
+# Decomposition of the essential matrix to obtain the posisble rotations and translations
 def decompose_essential_matrix(E, x1, x2):
     """
-    Decomposes E into a rotation and translation matrix using the
-    normalized corresponding points x1 and x2.
+    Decomposes E into a rotation and translation matrix using the normalized corresponding points x1 and x2.
     """
-
     # Fix left camera-matrix
     Rl = np.eye(3)
     tl = np.array([[0, 0, 0]]).T
     Pl = np.concatenate((Rl, tl), axis=1)
 
-    # TODO: Compute possible rotations and translations
-
-    # decompose essential matrix into R, t (See Hartley and Zisserman 3)
     #Apply singualr value decomposition to E
     U, S, V = np.linalg.svd(E, full_matrices=True) 
-    #Enforcing rank-2 constraint: set smallest singular value of S to 0 -->I am zeroing down the last singualr value of S (position 2--> 3rd element)
+    #Enforcing rank-2 constraint:I am zeroing down the last singualr value of S
     S[2] = 0 
     W = np.array([0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]).reshape(3, 3)
 
-    t1 = U[:, 2] #translation
+    #Translations
+    t1 = U[:, 2] 
     if (np.linalg.norm(t1)) != 0:
         t1 = t1/(np.linalg.norm(t1))
     t1 = t1[..., np.newaxis]
     t2= - t1
 
-
-    # R1 = U * W * V.T
-    # R2 = U * W.T * V.T
+    #Rotations
     R1 = U * W * V
     R2 = U * W.T * V
-    #Make sure that the returned rotation matrices are valid, hence with det=1 and not det= -1 --> if -1 then invert the sign of the matrix
-    #R1 = R1 * sign(det(R1)) * sign(det(K))
-    #R2 = R2 * sign(det(R2)) * sign(det(K))
-    det1 = scipy.linalg.det(R1) #np.linalg.det(np.dot(U, V)) < 0:
+    # I want to be sure that the returned rotation matrices are valid, hence with det=1 and not det= -1 --> if <0 then I invert the sign of the matrix
+    det1 = scipy.linalg.det(R1)
     det2 = scipy.linalg.det(R2)
     if det1 < 0: 
         R1 = -R1  
@@ -238,6 +219,7 @@ def decompose_essential_matrix(E, x1, x2):
     return Pl, Pr
 
 
+# Function used to reconstruct the 3D points using the obtained rotation and translation
 def infer_3d(x1, x2, Pl, Pr):
     # INFER3D Infers 3d-positions of the point-correspondences x1 and x2, using
     # the rotation matrices Rl, Rr and translation vectors tl, tr. Using a
