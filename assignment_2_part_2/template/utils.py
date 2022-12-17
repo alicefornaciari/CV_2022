@@ -1,5 +1,6 @@
 import numpy as np
 import scipy
+import math
 import scipy.sparse as sparse
 from scipy.sparse.linalg import lsmr
 from collections import defaultdict
@@ -179,7 +180,11 @@ def decompose_essential_matrix(E, x1, x2):
     U, S, V = np.linalg.svd(E, full_matrices=True) 
     #Enforcing rank-2 constraint:I am zeroing down the last singualr value of S
     S[2] = 0 
-    W = np.array([0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]).reshape(3, 3)
+   # W = np.array([0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]).reshape(3, 3)
+    W = np.array([[0.0, -1.0, 0.0], 
+                  [1.0, 0.0, 0.0],
+                  [0.0, 0.0, 1.0]])
+
 
     #Translations
     t1 = U[:, 2] 
@@ -198,6 +203,9 @@ def decompose_essential_matrix(E, x1, x2):
         R1 = -R1  
     if det2 < 0:
         R2 = -R2
+    
+
+
 
     # Four possibilities
     Pr = [np.concatenate((R1, t1), axis=1),
@@ -257,3 +265,20 @@ def infer_3d(x1, x2, Pl, Pr):
 
     return x3d
 
+# Calculates rotation matrix to euler angles
+
+def rotationMatrixToEulerAngles(R) :
+    sy = math.sqrt(R[0,0] * R[0,0] +  R[1,0] * R[1,0])
+ 
+    singular = sy < 1e-6
+ 
+    if  not singular :
+        x = math.atan2(R[2,1] , R[2,2])
+        y = math.atan2(-R[2,0], sy)
+        z = math.atan2(R[1,0], R[0,0])
+    else :
+        x = math.atan2(-R[1,2], R[1,1])
+        y = math.atan2(-R[2,0], sy)
+        z = 0
+ 
+    return np.array([x, y, z])
