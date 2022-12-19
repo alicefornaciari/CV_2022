@@ -216,9 +216,6 @@ def decompose_essential_matrix(E, x1, x2):
     if det2 < 0:
         R2 = -R2
     
-
-
-
     # Four possibilities
     Pr = [np.concatenate((R1, t1), axis=1),
           np.concatenate((R1, t2), axis=1),
