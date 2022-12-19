@@ -89,8 +89,8 @@ def eight_points_algorithm(x1, x2, normalize=True):#True by default --> also for
         F = T2_t @ F_n @ T1
     return F
 
-#Function used to compute the distance of the res of the input points to the sampled ones, hence from the model
-def reprojection_error (F_sampled,x1,x2):
+#Function used to compute the distance of the rest of the input points to the sampled ones, hence from the model
+def reprojection_error(F_sampled,x1,x2):
     #find an intercept of a normal from the given point to the model
     x1_transf = F_sampled @ x1
     x2_transf = F_sampled.T @ x2 #x2.T @ F_sampled
@@ -98,8 +98,19 @@ def reprojection_error (F_sampled,x1,x2):
     err = (np.linalg.norm(x1 - x1_transf, axis=0) ** 2)+ (np.linalg.norm(x2 - x2_transf, axis=0) ** 2)
     #normalization of the error
     err = err /(np.linalg.norm(err))
-
     return err
+
+#Function used to compute the distance of the rest of the input points to the sampled ones, hence from the model
+def reprojection_error(F_sampled,x1,x2):
+    #find an intercept of a normal from the given point to the model
+    x1_transf = F_sampled @ x1
+    x2_transf = F_sampled.T @ x2 #x2.T @ F_sampled
+    #calculation of the distance (error)
+    err = (np.linalg.norm(x1 - x1_transf, axis=0) ** 2)+ (np.linalg.norm(x2 - x2_transf, axis=0) ** 2)
+    #normalization of the error
+    err = err /(np.linalg.norm(err))
+    return err
+
 
 def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
     """
@@ -119,14 +130,16 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
     prob =0.99
     e_out = 0.5 
     #min number of points needed to fit the model (8-point algorithm)
-    min_num =8 
+   # min_num =8 
+    num_samp =8
+    num_steps = int(round(np.log(1 - prob) / np.log(1- (1 - e_out)**num_samp)))
 
     #iterative approach  
     for _ in range(num_steps):
-        #definition of hte number of smaples needed for the ransac approach, randomly generated within a range from 0 and N
-        num_samp = int(round(np.log(1 - prob) / np.log(1- (1 - e_out)**min_num)))  #should give 1177 number of sampling points with min_num=8
+        #definition of the number of smaples needed for the ransac approach, randomly generated within a range from 0 and N
+        #num_samp = int(round(np.log(1 - prob) / np.log(1- (1 - e_out)**min_num)))  #should give 1177 number of sampling points with min_num=8
         s = np.random.randint(low=0,high=N,size=num_samp) 
-        #assign the values of x1 and x2 in the corresponding position to two new sampled points
+        #find the new x1 and x2 sampled points
         x1_sampled= x1[..., s]
         x2_sampled= x2[..., s]
 
@@ -135,7 +148,7 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
         #calculation of the distance from the sampled points to the rest of the input points
         distance = reprojection_error(F_sampled, x1,x2) 
 
-        #creation of a dictionary to contain the actual inliers for both the given inputs, considered when distance<threshold
+        #creation of a dictionary to collect the actual inliers for both the given inputs, considered when distance<threshold
         inliers_couple = defaultdict(lambda: None)
         x1_inl = x1[..., distance < threshold]
         x2_inl = x2[..., distance < threshold]
@@ -154,9 +167,8 @@ def ransac(x1, x2, threshold, num_steps=1000, random_seed=42):
             #estimate F with all the inliers --> reapply 8-point alg
             F = eight_points_algorithm(inliers_couple["x1"], inliers_couple["x2"])
             inliers = inliers_couple["x2"] # right points
-            errors = distance 
            
-    return F, inliers, errors  
+    return F, inliers 
 
 
 #Computation of the essential matrix E using the known intrinsics of the cameras (K1=K2=K)
